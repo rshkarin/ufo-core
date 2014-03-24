@@ -724,6 +724,67 @@ ufo_buffer_get_device_array (UfoBuffer *buffer, gpointer cmd_queue)
 }
 
 /**
+ * ufo_buffer_get_device_array_view:
+ *
+ * This method creates a new memory buffer that must be freed by the user.
+ * Moreover, the original @buffer is kept intact.
+ */
+gpointer
+ufo_buffer_get_device_array_view (UfoBuffer *buffer,
+                                  gpointer cmd_queue,
+                                  UfoRegion *region)
+{
+    UfoBufferPrivate *priv;
+    gsize size;
+    gsize row_pitch;
+    gsize slice_pitch;
+    cl_mem mem;
+    cl_int errcode;
+    gsize dst_origin[] = {0, 0, 0};
+
+    g_return_val_if_fail (UFO_IS_BUFFER (buffer), NULL);
+    priv = buffer->priv;
+
+    if (region->origin[0] + region->size[0] > priv->requisition.dims[0] ||
+        region->origin[1] + region->size[1] > priv->requisition.dims[1] ||
+        region->origin[2] + region->size[2] > priv->requisition.dims[2]) {
+        g_error ("Requested view exceeds buffer size");
+        return NULL;
+    }
+
+    update_last_queue (priv, cmd_queue);
+
+    size = region->size[0] * region->size[1] * region->size[2] * sizeof(float);
+    src_row_pitch = sizeof(float) * priv->requisition.dims[1];
+    src_slice_pitch = sizeof(float) * priv->requisition.dims[2];
+    dst_row_pitch = sizeof(float) * region->size[1];
+    dst_slice_pitch = sizeof(float) * region->size[2];
+
+    mem = clCreateBuffer (priv->context, CL_MEM_READ_WRITE, size, NULL, &errcode);
+    UFO_RESOURCES_CHECK_CLERR (errcode);
+
+    if (priv->location == UFO_LOCATION_HOST && priv->host_array) {
+
+    }
+
+    if (priv->location == UFO_LOCATION_DEVICE_IMAGE && priv->device_array) {
+        cl_event event;
+
+        UFO_RESOURCES_CHECK_CLERR (clEnqueueCopyBufferRect (cmd_queue,
+                                                            priv->device_array, mem,
+                                                            region->origin, dst_origin,
+                                                            region->size,
+                                                            src_row_pitch, src_slice_pitch,
+                                                            dst_row_pitch, dst_row_pitch,
+                                                            0, NULL, &event);
+        clWaitForEvents (1, &event);
+        clReleaseEvent (event);
+    }
+
+    return mem;
+}
+
+/**
  * ufo_buffer_get_device_image:
  * @buffer: A #UfoBuffer.
  * @cmd_queue: (allow-none): A cl_command_queue object or %NULL.
