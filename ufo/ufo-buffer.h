@@ -142,8 +142,7 @@ gpointer    ufo_buffer_get_device_array     (UfoBuffer      *buffer,
                                              gpointer        cmd_queue);
 gpointer    ufo_buffer_get_device_array_view(UfoBuffer      *buffer,
                                              gpointer        cmd_queue,
-                                             gsize          *offset,
-                                             gsize          *dims);
+                                             UfoRegion      *region);
 gpointer    ufo_buffer_get_device_image     (UfoBuffer      *buffer,
                                              gpointer        cmd_queue);
 void        ufo_buffer_discard_location     (UfoBuffer      *buffer);
