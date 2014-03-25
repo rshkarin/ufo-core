@@ -13,6 +13,7 @@ set(ufocore_SRCS
     ufo-gpu-node.c
     ufo-graph.c
     ufo-group.c
+    ufo-group-scheduler.c
     ufo-input-task.c
     ufo-messenger-iface.c
     ufo-node.c
@@ -43,6 +44,7 @@ set(ufocore_HDRS
     ufo-gpu-node.h
     ufo-graph.h
     ufo-group.h
+    ufo-group-scheduler.h
     ufo-input-task.h
     ufo-messenger-iface.h
     ufo-node.h
