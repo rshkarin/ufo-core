@@ -71,13 +71,13 @@ struct _UfoGroupSchedulerClass {
     GObjectClass parent_class;
 };
 
-UfoGroupScheduler*  ufo_group_scheduler_new             (UfoConfig     *config);
+UfoGroupScheduler*  ufo_group_scheduler_new             (UfoConfig          *config);
 void                ufo_group_scheduler_run             (UfoGroupScheduler  *scheduler,
-                                                         UfoTaskGraph  *task_graph,
-                                                         GError**       error);
+                                                         UfoTaskGraph       *task_graph,
+                                                         GError            **error);
 gpointer            ufo_group_scheduler_get_context     (UfoGroupScheduler  *scheduler);
 void                ufo_group_scheduler_set_arch_graph  (UfoGroupScheduler  *scheduler,
-                                                         UfoArchGraph  *graph);
+                                                         UfoArchGraph       *graph);
 UfoResources *      ufo_group_scheduler_get_resources   (UfoGroupScheduler  *scheduler);
 GType               ufo_group_scheduler_get_type        (void);
 GQuark              ufo_group_scheduler_error_quark     (void);
