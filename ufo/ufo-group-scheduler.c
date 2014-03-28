@@ -447,6 +447,7 @@ ufo_group_scheduler_run (UfoGroupScheduler *scheduler,
 
     group_graph = build_group_graph (priv, task_graph, arch_graph);
     groups = ufo_graph_get_nodes (group_graph);
+    threads = NULL;
 
     g_list_for (groups, it) {
         GThread *thread;
