@@ -269,24 +269,59 @@ build_group_graph (UfoGroupSchedulerPrivate *priv, UfoTaskGraph *graph, UfoArchG
 
 static UfoBuffer *poisonpill = (UfoBuffer *) 0x1;
 
+static gboolean
+pop_input_data (GList *parents, UfoBuffer **inputs)
+{
+    GList *it;
+    guint i = 0;
+
+    g_list_for (parents, it) {
+        UfoTwoWayQueue *queue;
+
+        queue = ((TaskGroup *) it->data)->queue;
+        inputs[i] = ufo_two_way_queue_consumer_pop (queue);
+
+        if (inputs[i] == poisonpill)
+            return FALSE;
+
+        i++;
+    }
+
+    return TRUE;
+}
+
+static void
+release_input_data (GList *parents, UfoBuffer **inputs)
+{
+    GList *it;
+    guint i = 0;
+
+    g_list_for (parents, it) {
+        UfoTwoWayQueue *queue;
+
+        queue = ((TaskGroup *) it->data)->queue;
+        ufo_two_way_queue_consumer_push (queue, inputs[i++]);
+    }
+}
+
 static GError *
 run_group (TaskGroup *group)
 {
-    GList *it;
     guint n_inputs;
-    guint i;
     UfoBuffer **inputs;
     UfoBuffer *output;
     UfoRequisition requisition;
     UfoTask *task;
-    gboolean finished = FALSE;
+    UfoTaskMode mode;
+    gboolean active = TRUE;
     GList *current = NULL;  /* current task */
 
     /* We should use get_structure to assert constraints ... */
     n_inputs = g_list_length (group->parents);
     inputs = g_new0 (UfoBuffer *, n_inputs);
+    mode = ufo_task_get_mode (UFO_TASK (g_list_nth_data (group->tasks, 0))) & UFO_TASK_MODE_TYPE_MASK;
 
-    while (!finished) {
+    while (active) {
         /* Choose next task of the group */
         current = g_list_next (current);
 
@@ -295,29 +330,17 @@ run_group (TaskGroup *group)
 
         task = UFO_TASK (current->data);
 
-        i = 0;
-
         /* Fetch data from parent groups */
-        g_list_for (group->parents, it) {
-            UfoTwoWayQueue *queue;
+        active = pop_input_data (group->parents, inputs);
 
-            queue = ((TaskGroup *) it->data)->queue;
-            inputs[i] = ufo_two_way_queue_consumer_pop (queue);
-
-            if (inputs[i] == poisonpill)
-                finished = TRUE;
-
-            i++;
-        }
-
-        if (finished)
+        if (!active)
             break;
 
         /* Ask current task about size requirements */
         ufo_task_get_requisition (task, inputs, &requisition);
 
+        /* Insert output buffers as longs as capacity is not filled */
         if (!group->is_leaf) {
-            /* Insert buffers as longs as capacity is not filled */
             if (ufo_two_way_queue_get_capacity (group->queue) < 2) {
                 UfoBuffer *buffer;
 
@@ -331,26 +354,47 @@ run_group (TaskGroup *group)
         /* Generate/process the data. Because the functions return active state,
          * we negate it for the finished flag. */
 
-        if (n_inputs == 0) {
-            finished = !ufo_task_generate (task, output, &requisition);
+        switch (mode) {
+            case UFO_TASK_MODE_PROCESSOR:
+                active = ufo_task_process (task, inputs, output, &requisition);
+                break;
+
+            case UFO_TASK_MODE_GENERATOR:
+                active = ufo_task_generate (task, output, &requisition);
+                break;
+
+            case UFO_TASK_MODE_REDUCTOR:
+                do {
+                    active = ufo_task_process (task, inputs, output, &requisition);
+                    release_input_data (group->parents, inputs);
+                    active = pop_input_data (group->parents, inputs);
+                } while (active);
+                break;
+
+            default:
+                g_warning ("Invalid task mode: %i\n", mode);
+                break;
+        }
+
+        if (mode != UFO_TASK_MODE_REDUCTOR) {
+            if (active) {
+                ufo_two_way_queue_producer_push (group->queue, output);
+
+                if (mode == UFO_TASK_MODE_PROCESSOR)
+                    release_input_data (group->parents, inputs);
+            }
         }
         else {
-            finished = !ufo_task_process (task, inputs, output, &requisition);
+            /* Generate and forward as long as reductor produces data */
+            do {
+                active = ufo_task_generate (task, output, &requisition);
+
+                if (active) {
+                    ufo_two_way_queue_producer_push (group->queue, output);
+                    output = ufo_two_way_queue_producer_pop (group->queue);
+                }
+            } while (active);
         }
-
-        if (finished)
-            break;
-
-        i = 0;
-
-        g_list_for (group->parents, it) {
-            UfoTwoWayQueue *queue;
-
-            queue = ((TaskGroup *) it->data)->queue;
-            ufo_two_way_queue_consumer_push (queue, inputs[i++]);
-        }
-
-        ufo_two_way_queue_producer_push (group->queue, output);
     }
 
     if (!group->is_leaf)
